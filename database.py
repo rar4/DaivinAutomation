@@ -61,13 +61,13 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error initializing database: {e}")
 
-    def save_user(self, age, name, last_name, bio, photos=None):
+    def save_user(self, age: int , name: str,  summary, photos=None):
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO users (age, name, last_name, bio, photos) VALUES (?, ?, ?, ?, ?)",
-                    (age, name, last_name, bio, photos)
+                    "INSERT INTO users (age, name, summary, photos) VALUES (?, ?, ?, ?, ?)",
+                    (age, name, summary, photos)
                 )
                 return cursor.lastrowid
         except sqlite3.Error as e:

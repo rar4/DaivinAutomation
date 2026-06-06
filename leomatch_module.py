@@ -1,8 +1,13 @@
 import asyncio
 import logging
+import os
 import random
 import re
 import time
+from operator import is_
+
+from openai._utils import is_mapping
+from telethon.errors.rpcerrorlist import ScoreInvalidError
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +35,12 @@ class LeoMatchBotModule:
     async def start_browsing(self):
         """Initiates the browsing session: sends /start, then 1, then sets random profile count."""
         self.is_browsing = True
-        self.profiles_to_browse = random.randint(5, 20)
+
+        # Load range from env or use defaults
+        min_profiles = int(os.getenv("PROFILES_MIN", 5))
+        max_profiles = int(os.getenv("PROFILES_MAX", 20))
+        self.profiles_to_browse = random.randint(min_profiles, max_profiles)
+
         logger.info(
             f"Starting browsing session. Target: {self.profiles_to_browse} profiles."
         )
@@ -84,24 +94,21 @@ class LeoMatchBotModule:
         Returns tuple of (age, name, last_name, bio, photos) for database saving.
         """
         # Pattern: "Name, Age, City – Description"
-        pattern = r"^([^,]+),\s*(\d+),\s*([^,]+?)\s*–\s*(.*)$"
+        pattern = r"(\w+), (\d{2}), (\w+) – ([\s\S]*)"
         match = re.match(pattern, profile_text)
 
         if match:
             name = match.group(1).strip()
             age = int(match.group(2).strip())
             _city = match.group(3).strip()  # noqa: F841 - extracted for future use
-            description = match.group(4).strip()
+            description = match.group(4)
 
             # Split name into first and last name
-            name_parts = name.split()
-            first_name = name_parts[0] if name_parts else name
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
 
-            return (age, first_name, last_name, description, photos)
+            return (age, name, description, photos)
 
         # Return defaults if pattern doesn't match
-        return (None, "Unknown", "Unknown", profile_text, photos)
+        return (None, None, profile_text, photos)
 
     async def handle_message(self, event):
         """
@@ -121,12 +128,33 @@ class LeoMatchBotModule:
 
             # Parse user data from profile text
             parsed_user = self._parse_and_save_user(profile_text, photos)
+            description = parsed_user[2]
 
-           # Analyze the profile (run in thread pool to avoid blocking)
-            analysis_result = await asyncio.get_event_loop().run_in_executor(
-                None, self.analyzer.analyze_profile, profile_text, photos
-            )
-            score = analysis_result["score"]
+            if parsed_user[1] == "Олександр":
+                logger.info("Skipping User's profile")
+                return False
+            # Length check: dislike if description is less than 150 symbols
+            if len(description) < 150:
+                logger.info(
+                    f"Profile description too short ({len(description)} symbols). Auto-disliking."
+                )
+                # Add a pause to simulate analysis time and avoid rapid-fire disliking
+                self._random_pause()
+                analysis_result = {
+                    "score": 0,
+                    "interest": "Too short",
+                    "summary": f"Description too short ({len(description)} symbols).",
+                }
+                is_match = "NO"
+                score = 0
+            else:
+                # Analyze the profile (run in thread pool to avoid blocking)
+                analysis_result = await asyncio.get_event_loop().run_in_executor(
+                    None, self.analyzer.analyze_profile, profile_text, photos
+                )
+                logger.info(analysis_result)
+                is_match = analysis_result["is_match"]
+                score = analysis_result["score"]
 
             # Save user to database (run in thread pool to avoid blocking)
             user_id = await asyncio.get_event_loop().run_in_executor(
@@ -136,11 +164,10 @@ class LeoMatchBotModule:
                 parsed_user[1],
                 parsed_user[2],
                 parsed_user[3],
-                parsed_user[4],
             )
 
-            # Check if score is above threshold (70)
-            if score > 70:
+            # Check if score is above threshold (55)
+            if is_match == "YES":
                 logger.info(f"Profile matches (score: {score}). Sending {HEART_EMOJI}")
                 await self._send_reaction(HEART_EMOJI)
             else:

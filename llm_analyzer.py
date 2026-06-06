@@ -57,7 +57,7 @@ class LLMAnalyzer:
             '  "summary": "2-3 sentence assessment of the profile",\n'
             '  "interest": "the person\'s primary field or interest, or \'unknown\' if unclear"\n'
             "}\n\n"
-            "match is YES if score >= 40. Be generous and charitable — assume good faith. Most people have genuine interests even if they don't always express them eloquently. When in doubt, lean YES."
+            "match is YES if score >= 60. Be as accurate as you can be, but if you don't know, assume NO."
             f"{photo_info}"
         )
 
@@ -73,15 +73,12 @@ class LLMAnalyzer:
             )
             content = response.choices[0].message.content.strip()
 
-            print("-----------------")
-            print(content)
-            print("-----------------")
 
             # Parse JSON response
             data = json.loads(content)
 
             return {
-                "is_match": data.get("match", "NO").upper() == "YES",
+                "is_match": data.get("match", "NO").upper(),
                 "score": float(data.get("score", 0)),
                 "summary": data.get("summary", ""),
                 "interest": data.get("interest", "Unknown"),
@@ -89,7 +86,7 @@ class LLMAnalyzer:
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON response: {e}")
             return {
-                "is_match": False,
+                "is_match": "NO",
                 "score": 0,
                 "summary": "Error",
                 "interest": "Unknown",
@@ -97,7 +94,7 @@ class LLMAnalyzer:
         except Exception as e:
             print(f"Error during LLM analysis: {e}")
             return {
-                "is_match": False,
+                "is_match": "NO",
                 "score": 0,
                 "summary": "Error",
                 "interest": "Unknown",
@@ -129,11 +126,17 @@ class LLMAnalyzer:
 
 
 if __name__ == "__main__":
-    # Test with fake Russian profile data (no photos)
+    # Test with provided Russian profile data (no photos)
     test_profile = (
-        "Эвелина, 18, Poznań – Mне 17, живу в Жепине, а уже в сентябре переезжаю в Познань 🌆\n"
-        "Сейчас хочется найти новые знакомства, особенно очень мечтаю встретить классную подругу 🫶\n"
-        "Но вообще я открыта к любому общению — люблю искренних и комфортных людей"
+        'Ищу людей у которых есть свое "зачем".'
+        
+        'Люблю людей, у которых разговоры часто заканчиваются планом как захватить мир.'
+        
+        'О себе:'
+        'Люблю копатся в коде и в своей голове.\n'
+        'Периодически читаю про ИИ, психологию, биохакинг (в рот его ебать).\n\n'
+        
+        'Если у тебя есть тема, про которую ты можешь говорить бесконечно, а сказать некому, ты нашел правильного человека.'
     )
 
     # Create analyzer (no arguments needed)
